@@ -11,7 +11,8 @@
   "license": "ISC",
   "dependencies": {
     "@storybook/react": "^7.6.17",
+    "ahooks": "^3.7.11",
     "cypress": "^13.6.6",
-    "dayjs": "1.11.10",
+    "dayjs": "1.11.10"
   }
 }
