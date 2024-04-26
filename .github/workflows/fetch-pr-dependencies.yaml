@@ -33,6 +33,7 @@ jobs:
               echo "Waiting for Semgrep scan to complete..."
               sleep 30
             fi
+          done
 
       - name: Call API for task token and retry if needed
         id: api-call-start-task
