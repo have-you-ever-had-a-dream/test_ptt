@@ -14,14 +14,25 @@ jobs:
         with:
           ref: ${{ github.head_ref }}
 
-      - name: Wait for semgrep scan to complete
-        uses: octokit/request-action@v2.x
-        with:
-          route: GET /repos/${{ github.repository }}/commits/${{ github.event.pull_request.head.sha }}/check-runs
-          mediaType: '{ previews: ["antiope"] }'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        timeout-minutes: 20
+      - name: Wait for specific check to complete
+        run: |
+          completed=false
+          while [ "$completed" != "true" ]; do
+            response=$(curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/commits/${{ github.sha }}/check-runs")
+            echo "Response from GitHub API:"
+            echo "$response" | jq .
+            status=$(echo $response | jq -r '.check_runs[] | select(.name == "semgrep-cloud-platform/scan") | .status')
+            conclusion=$(echo $response | jq -r '.check_runs[] | select(.name == "semgrep-cloud-platform/scan") | .conclusion')
+            echo "Status of Semgrep scan: $status"
+            echo "Conclusion of Semgrep scan: $conclusion"
+            if [ "$status" == "completed" ]; then
+              completed=true
+              echo "Semgrep scan has completed with conclusion: $conclusion"
+            else
+              echo "Waiting for Semgrep scan to complete..."
+              sleep 30
+            fi
 
       - name: Call API for task token and retry if needed
         id: api-call-start-task
