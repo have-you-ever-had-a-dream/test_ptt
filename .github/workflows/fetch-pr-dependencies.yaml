@@ -82,7 +82,7 @@ jobs:
             if [ "$ready" == "true" ]; then
               if [ "$successful" == "true" ]; then
                 echo "Task completed successfully."
-                jq .value result.json > output.json
+                jq .value result.json > dependency_data_${{ github.event.pull_request.head.sha }}__threshold_LICENSE_POLICY_SETTING_COMMENT.json
                 break
               else
                 echo "Task not successful."
