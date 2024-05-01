@@ -1,4 +1,4 @@
-name: Semgrep Dependency and License Check
+name: Semgrep Dependency and License Check Demo
 
 on:
   pull_request:
