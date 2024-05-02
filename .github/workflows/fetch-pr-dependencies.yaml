@@ -58,8 +58,8 @@ jobs:
               task_token_jwt=$(jq -r '.task_token_jwt' response.json)
               echo "::set-output name=task_token_jwt::$task_token_jwt"
               break
-            elif [ "$response" -eq 404 ] && [ $(jq -r '.retry-after' response.json) ]; then
-              retry_after=$(jq -r '.retry-after' response.json)
+            elif [ "$response" -eq 503 ] && [ $(jq -r '.headers["retry-after"]' response.json) ]; then
+              retry_after=$(jq -r '.headers["retry-after"]' response.json)
               echo "Not ready, retrying in $retry_after seconds..."
               sleep $retry_after
               ((retry_count++))
