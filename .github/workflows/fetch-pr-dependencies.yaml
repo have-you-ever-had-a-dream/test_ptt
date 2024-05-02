@@ -1,0 +1,101 @@
+name: Semgrep Dependency and License Check Demo
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  wait-for-semgrep-cloud-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Wait for specific check to complete
+        run: |
+          completed=false
+          while [ "$completed" != "true" ]; do
+            response=$(curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/commits/${{ github.head_ref }}/check-runs")
+            echo "Response from GitHub API:"
+            echo "$response" | jq .
+            status=$(echo $response | jq -r '.check_runs[] | select(.name == "semgrep-cloud-platform/scan") | .status')
+            conclusion=$(echo $response | jq -r '.check_runs[] | select(.name == "semgrep-cloud-platform/scan") | .conclusion')
+            echo "Status of Semgrep scan: $status"
+            echo "Conclusion of Semgrep scan: $conclusion"
+            if [ "$status" == "completed" ]; then
+              completed=true
+              echo "Semgrep scan has completed with conclusion: $conclusion"
+            else
+              echo "Waiting for Semgrep scan to complete..."
+              sleep 30
+            fi
+          done
+
+      - name: Call API for task token and retry if needed
+        id: api-call-start-task
+        run: |
+          retry_count=0
+          max_retries=5
+          while [ $retry_count -lt $max_retries ]; do
+            response=$(curl --location --request POST 'https://semgrep.dev/api/sca/deployments/14972/dependencies/license_data_async' \
+              --header 'Accept:  application/octet-stream' \
+              --header 'Content-Type:  application/json' \
+              --header 'Authorization: Bearer ${{ secrets.SEMGREP_APP_TOKEN }}' \
+              --data '{
+                "repository_id": 661481,
+                "ref": "${{ github.ref }}",
+                "commit_sha": "${{ github.event.pull_request.head.sha }}",
+                "pr_identifier": "${{ github.event.pull_request.number }}",
+                "license_policy_threshold": "LICENSE_POLICY_SETTING_COMMENT"
+              }' \
+              --write-out "%{http_code}" --silent --output response.json)
+            if [ "$response" -eq 202 ]; then
+              echo "Task initiated successfully."
+              task_token_jwt=$(jq -r '.task_token_jwt' response.json)
+              echo "::set-output name=task_token_jwt::$task_token_jwt"
+              break
+            elif [ "$response" -eq 404 ] && [ $(jq -r '.retry-after' response.json) ]; then
+              retry_after=$(jq -r '.retry-after' response.json)
+              echo "Not ready, retrying in $retry_after seconds..."
+              sleep $retry_after
+              ((retry_count++))
+            else
+              echo "Failed to initiate task, status: $response"
+              cat response.json
+              break
+            fi
+          done
+
+      - name: Poll for task completion
+        if: steps.api-call-start-task.outputs.task_token_jwt
+        run: |
+          while true; do
+            result=$(curl --location --request GET 'https://semgrep.dev/api/tasks/${{ steps.api-call-start-task.outputs.task_token_jwt }}' \
+              --header 'Authorization: Bearer ${{ secrets.SEMGREP_APP_TOKEN }}' \
+              --write-out "%{http_code}" --silent --output result.json)
+            ready=$(jq -r '.ready' result.json)
+            successful=$(jq -r '.successful' result.json)
+            if [ "$ready" == "true" ]; then
+              if [ "$successful" == "true" ]; then
+                echo "Task completed successfully."
+                jq .value result.json > dependency_data_${{ github.event.pull_request.head.sha }}__threshold_LICENSE_POLICY_SETTING_COMMENT.json
+                break
+              else
+                echo "Task not successful."
+                cat result.json
+                break
+              fi
+            else
+              echo "Task still processing. Waiting 5 seconds..."
+              sleep 5
+            fi
+          done
+      - name: Upload Results
+        uses: actions/upload-artifact@v2
+        with:
+          name: scan-results
+          path: dependency_data_${{ github.event.pull_request.head.sha }}__threshold_LICENSE_POLICY_SETTING_COMMENT.json
