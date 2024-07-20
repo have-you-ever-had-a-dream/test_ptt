@@ -1,0 +1,107 @@
+name: Generate and Upload SBOMs
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  ptt-upload-sbom:
+    runs-on: ubuntu-latest
+
+    env:
+      SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+      SEMGREP_APP_URL: https://semgrep.dev
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: "20"
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: "3.11"
+
+      - name: Install Java
+        uses: actions/setup-java@v2
+        with:
+          distribution: "temurin"
+          java-version: "11"
+
+      - name: Install CDXGen
+        run: npm install -g @cyclonedx/cdxgen
+
+      - name: Generate and Upload SBOM
+        run: |
+          generate_bom() {
+            local filetype="$1"
+            local filename="$2"
+            local alternate_filename="$3"
+            find . -type f -name "$filename" -exec sh -c '
+              url_encode() {
+                local string="$1"
+                echo "$string" | jq -sRr @uri
+              }
+
+              swap_files() {
+                if [ -f "$1" ] && [ -f "$2" ]; then
+                  mv "$1" "$1.bak"
+                  mv "$2" "$1"
+                fi
+              }
+
+              restore_files() {
+                if [ -f "$1.bak" ]; then
+                  mv "$1" "$2"
+                  mv "$1.bak" "$1"
+                fi
+              }
+
+              filepath="$1"
+              dirname=$(dirname "$filepath")
+              alt_filepath="$dirname/'"$alternate_filename"'"
+
+              # Temporarily swap files if alternate file exist
+              if [ -f "$alt_filepath" ]; then
+                echo "Temporarily swapping $filepath with $alt_filepath"
+                swap_files "$filepath" "$alt_filepath"
+              fi
+
+              echo "Generating SBOM for $filepath"
+              encoded_filepath=$(url_encode "$filepath")
+              bom_filename="semgrep-generated-sbom-${encoded_filepath}"
+
+              (cd "$dirname" && cdxgen -t '"$filetype"' -o "${bom_filename}.json")
+
+              # Restore original files after SBOM generation
+              if [ -f "$alt_filepath" ]; then
+                echo "Restoring $filepath with $alt_filepath"
+                restore_files "$filepath" "$alt_filepath"
+              fi
+
+              # Upload immediately after parsing
+              REPO_NAME=${{ github.repository }}
+              COMMIT_HASH=${{ github.sha }}
+              sbom_content=$(jq -c '.' "$dirname/${bom_filename}.json")
+
+              echo "Uploading ${bom_filename}.json"
+              response=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "Authorization: Bearer $SEMGREP_APP_TOKEN" -H "Content-Type: application/json" \
+                -d "{\"repository_name\":\"$REPO_NAME\", \"commit_hash\":\"$COMMIT_HASH\", \"manifest_path\":\"$filepath\", \"sbom\": $sbom_content}" \
+                $SEMGREP_APP_URL/api/sca/dependencies/upload_dep_sboms)
+              if [ "$response" -ne 200 ]; then
+                echo "Failed to upload ${bom_filename}.json, received response code $response"
+                exit 1
+              fi
+            ' sh {} \;
+          }
+
+          generate_bom "python" "requirements.txt" "requirements.in"
+          generate_bom "node" "package.json"
+          generate_bom "gradle" "build.gradle"
+          generate_bom "swift" "package.resolved"
