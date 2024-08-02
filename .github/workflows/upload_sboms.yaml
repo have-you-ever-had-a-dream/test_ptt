@@ -2,9 +2,6 @@ name: Generate and Upload SBOMs
 
 on:
   workflow_dispatch:
-  pull_request:
-    branches:
-      - main
 
 jobs:
   ptt-upload-sbom:
@@ -23,10 +20,16 @@ jobs:
         with:
           node-version: "20"
 
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
       - name: Set up Python
         uses: actions/setup-python@v2
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Install Java
         uses: actions/setup-java@v2
@@ -34,8 +37,13 @@ jobs:
           distribution: "temurin"
           java-version: "11"
 
+      - name: Set up Swift
+        uses: fwal/setup-swift@v1
+        with:
+          swift-version: "5.7"
+
       - name: Install CDXGen
-        run: npm install -g @cyclonedx/cdxgen
+        run: npm install -g @cyclonedx/cdxgen@10.7.0
 
       - name: Generate and Upload SBOM
         run: |
@@ -43,7 +51,7 @@ jobs:
             local filetype="$1"
             local filename="$2"
             local alternate_filename="$3"
-            find . -type f -name "$filename" ! -path "*/node_modules/*" ! -path "*/.venv/*" ! -path "*/.tox/*" ! -path "*/build/*" ! -path "*/dist/*" -exec sh -c '
+            find . -type f -name "$filename" -exec sh -c '
               url_encode() {
                 local string="$1"
                 echo "$string" | jq -sRr @uri
@@ -73,19 +81,34 @@ jobs:
                 swap_files "$filepath" "$alt_filepath"
               fi
 
+              # Install Python deps in a virtual environment
+              # Improves performance over using the cdxgen created venv as per
+              # https://github.com/CycloneDX/cdxgen/blob/bc6edcf136cc4039df92e1d4e9a0b45e23bc2595/index.js#L2878
+              if [ '"$filetype"' = "python" ]; then
+                echo "Installing Python packages from $filepath"
+                python3 -m venv "$dirname/venv"
+                . "$dirname/venv/bin/activate"
+                pip install -r "$filepath"
+              fi
+
               echo "Generating SBOM for $filepath"
               encoded_filepath=$(url_encode "$filepath")
               bom_filename="semgrep-generated-sbom-${encoded_filepath}"
 
               (cd "$dirname" && cdxgen -t '"$filetype"' -o "${bom_filename}.json")
 
+              # Deactivate and remove virtual environment
+              if [ '"$filetype"' = "python" ]; then
+                echo "Deactivating and removing virtual environment"
+                deactivate
+                rm -rf "$dirname/venv"
+              fi
+
               # Restore original files after SBOM generation
               if [ -f "$alt_filepath" ]; then
                 echo "Restoring $filepath with $alt_filepath"
                 restore_files "$filepath" "$alt_filepath"
               fi
-
-              cat $dirname/${bom_filename}.json
 
               # Upload immediately after parsing
               REPO_NAME=${{ github.repository }}
@@ -106,4 +129,4 @@ jobs:
           generate_bom "python" "requirements.txt" "requirements.in"
           generate_bom "node" "package.json"
           generate_bom "gradle" "build.gradle"
-          generate_bom "swift" "package.resolved"
+          generate_bom "swift" "Package.swift"
