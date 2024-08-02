@@ -113,10 +113,16 @@ jobs:
                 restore_files "$filepath" "$alt_filepath"
               fi
 
+              
+
               # Upload immediately after parsing
               REPO_NAME=${{ github.repository }}
               COMMIT_HASH=${{ github.sha }}
               sbom_content=$(jq -c '.' "$dirname/${bom_filename}.json")
+
+
+              cat $dirname/${bom_filename}.json
+
 
               echo "Uploading ${bom_filename}.json"
               response=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "Authorization: Bearer $SEMGREP_APP_TOKEN" -H "Content-Type: application/json" \
