@@ -85,6 +85,8 @@ jobs:
                 restore_files "$filepath" "$alt_filepath"
               fi
 
+              cat $dirname/${bom_filename}.json
+
               # Upload immediately after parsing
               REPO_NAME=${{ github.repository }}
               COMMIT_HASH=${{ github.sha }}
