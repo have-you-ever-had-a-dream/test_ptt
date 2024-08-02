@@ -43,7 +43,7 @@ jobs:
             local filetype="$1"
             local filename="$2"
             local alternate_filename="$3"
-            find . -type f -name "$filename" -exec sh -c '
+            find . -type f -name "$filename" ! -path "*/node_modules/*" ! -path "*/.venv/*" ! -path "*/.tox/*" ! -path "*/build/*" ! -path "*/dist/*" -exec sh -c '
               url_encode() {
                 local string="$1"
                 echo "$string" | jq -sRr @uri
