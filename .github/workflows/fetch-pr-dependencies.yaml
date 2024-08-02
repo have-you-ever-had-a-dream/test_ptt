@@ -82,7 +82,22 @@ jobs:
             if [ "$ready" == "true" ]; then
               if [ "$successful" == "true" ]; then
                 echo "Task completed successfully."
-                jq .value result.json > dependency_data_${{ github.event.pull_request.head.sha }}__threshold_LICENSE_POLICY_SETTING_ALLOW.json
+
+                # Extract and parse the 'value' field
+                value=$(jq -r '.value' result.json)
+
+                # Replace single quotes with double quotes and parse the JSON string
+                fixed_value=$(echo "$value" | sed "s/'/\"/g")
+
+                # Check if fixed_value is valid JSON
+                if echo "$fixed_value" | jq empty > /dev/null 2>&1; then
+                  echo "$fixed_value" | jq . > dependency_data_${{ github.event.pull_request.head.sha }}__threshold_LICENSE_POLICY_SETTING_ALLOW.json
+                else
+                  echo "ERROR: Parse value is not a valid JSON"
+                  cat result.json
+                  exit 1
+                fi
+
                 break
               else
                 echo "Task not successful."
