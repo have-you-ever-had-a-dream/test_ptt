@@ -41,16 +41,16 @@ jobs:
           retry_count=0
           max_retries=5
           while [ $retry_count -lt $max_retries ]; do
-            response=$(curl --location --request POST '${{ secrets.SEMGREP_APP_URL }}/api/sca/deployments/14972/dependencies/license_data_async' \
+            response=$(curl --location --request POST '${{ secrets.SEMGREP_APP_URL }}/api/sca/deployments/408/dependencies/license_data_async' \
               --header 'Accept:  application/octet-stream' \
               --header 'Content-Type:  application/json' \
               --header 'Authorization: Bearer ${{ secrets.SEMGREP_APP_TOKEN }}' \
               --data '{
-                "repository_id": 661481,
+                "repository_id": 7695,
                 "ref": "${{ github.ref }}",
                 "commit_sha": "${{ github.event.pull_request.head.sha }}",
                 "pr_identifier": "${{ github.event.pull_request.number }}",
-                "license_policy_threshold": "LICENSE_POLICY_SETTING_COMMENT"
+                "license_policy_threshold": "LICENSE_POLICY_SETTING_ALLOW"
               }' \
               --write-out "%{http_code}" --silent --output response.json)
             if [ "$response" -eq 202 ]; then
@@ -82,7 +82,7 @@ jobs:
             if [ "$ready" == "true" ]; then
               if [ "$successful" == "true" ]; then
                 echo "Task completed successfully."
-                jq .value result.json > dependency_data_${{ github.event.pull_request.head.sha }}__threshold_LICENSE_POLICY_SETTING_COMMENT.json
+                jq .value result.json > dependency_data_${{ github.event.pull_request.head.sha }}__threshold_LICENSE_POLICY_SETTING_ALLOW.json
                 break
               else
                 echo "Task not successful."
