@@ -41,7 +41,7 @@ jobs:
           retry_count=0
           max_retries=5
           while [ $retry_count -lt $max_retries ]; do
-            response=$(curl --location --request POST 'https://semgrep.dev/api/sca/deployments/14972/dependencies/license_data_async' \
+            response=$(curl --location --request POST '${{ secrets.SEMGREP_APP_URL }}/api/sca/deployments/14972/dependencies/license_data_async' \
               --header 'Accept:  application/octet-stream' \
               --header 'Content-Type:  application/json' \
               --header 'Authorization: Bearer ${{ secrets.SEMGREP_APP_TOKEN }}' \
@@ -74,7 +74,7 @@ jobs:
         if: steps.api-call-start-task.outputs.task_token_jwt
         run: |
           while true; do
-            result=$(curl --location --request GET 'https://semgrep.dev/api/tasks/${{ steps.api-call-start-task.outputs.task_token_jwt }}' \
+            result=$(curl --location --request GET '${{ secrets.SEMGREP_APP_URL }}/api/tasks/${{ steps.api-call-start-task.outputs.task_token_jwt }}' \
               --header 'Authorization: Bearer ${{ secrets.SEMGREP_APP_TOKEN }}' \
               --write-out "%{http_code}" --silent --output result.json)
             ready=$(jq -r '.ready' result.json)
