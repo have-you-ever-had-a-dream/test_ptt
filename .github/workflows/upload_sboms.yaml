@@ -54,6 +54,11 @@ jobs:
             local filetype="$1"
             local filename="$2"
             local alternate_filename="$3"
+
+            echo filetype: $filetype
+            echo filename: $filename
+            echo alternate_filename: $alternate_filename
+
             find . -type f -name "$filename" ! -path "*/node_modules/*" ! -path "*/.venv/*" ! -path "*/.tox/*" ! -path "*/build/*" ! -path "*/dist/*" -exec sh -c '
               url_encode() {
                 local string="$1"
@@ -96,7 +101,10 @@ jobs:
 
               echo "Generating SBOM for $filepath"
               encoded_filepath=$(url_encode "$filepath")
+              echo encoded_filepath: $encoded_filepath
+              
               bom_filename="semgrep-generated-sbom-${encoded_filepath}"
+              echo bom_filename: $bom_filename
 
               (cd "$dirname" && cdxgen -t '"$filetype"' -o "${bom_filename}.json")
 
@@ -118,18 +126,16 @@ jobs:
               gzip -c "$dirname/${bom_filename}.json" > "$dirname/${bom_filename}.json.gz"
 
               # Encode compressed SBOM in base64
-              sbom_content=$(base64 -i "$dirname/${bom_filename}.json.gz")
-              
+              sbom_content=$(base64 -w 0 "$dirname/${bom_filename}.json.gz")
+
 
               # Upload immediately after parsing
               REPO_NAME=${{ github.repository }}
               COMMIT_HASH=${{ github.sha }}
-              sbom_content=$(jq -c '.' "$dirname/${bom_filename}.json")
-
 
               # SBOM SAY WHAT?
               cat $dirname/${bom_filename}.json
-              cat $sbom_content
+              echo sbom_content: $sbom_content
               
 
               # Prepare JSON payload
