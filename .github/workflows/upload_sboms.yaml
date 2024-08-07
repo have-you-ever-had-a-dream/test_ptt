@@ -118,7 +118,7 @@ jobs:
               gzip -c "$dirname/${bom_filename}.json" > "$dirname/${bom_filename}.json.gz"
 
               # Encode compressed SBOM in base64
-              sbom_content=$(base64 -w 0 "$dirname/${bom_filename}.json.gz")
+              sbom_content=$(base64 -i "$dirname/${bom_filename}.json.gz")
               
 
               # Upload immediately after parsing
@@ -129,6 +129,7 @@ jobs:
 
               # SBOM SAY WHAT?
               cat $dirname/${bom_filename}.json
+              cat $sbom_content
               
 
               # Prepare JSON payload
