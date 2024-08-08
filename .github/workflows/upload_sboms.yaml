@@ -134,8 +134,10 @@ jobs:
               COMMIT_HASH=${{ github.sha }}
 
               # SBOM SAY WHAT?
+              echo "SBOM CONTENT"
               cat $dirname/${bom_filename}.json
-              echo sbom_content: $sbom_content
+              echo "SBOM ENCODED"
+              echo $sbom_content
               
 
               # Prepare JSON payload
@@ -151,6 +153,7 @@ jobs:
               response=$(curl -v -s -o /dev/null -w "%{http_code}" -X POST -H "Authorization: Bearer $SEMGREP_APP_TOKEN" -H "Content-Type: application/json" \
                 -d @"$payload_file" \
                 $SEMGREP_APP_URL/api/sca/dependencies/upload_dep_sboms)
+              echo "Response: $response"
               if [ "$response" -ne 200 ]; then
                 echo "Failed to upload ${bom_filename}.json.gz, received response code $response"
                 exit 1
