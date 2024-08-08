@@ -12,7 +12,6 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       JOB_NAMES: ptt-upload-sbom,semgrep/ci
-      OUTPUT_FILE: dependency_data_${{ github.event.pull_request.head.sha }}__threshold_LICENSE_POLICY_SETTING_COMMENT.json
       LICENSE_POLICY_THRESHOLD: "LICENSE_POLICY_SETTING_COMMENT"
 
     steps:
@@ -136,7 +135,7 @@ jobs:
 
                 # Check if fixed_value is valid JSON
                 if echo "$fixed_value" | jq empty > /dev/null 2>&1; then
-                  echo "$fixed_value" | jq . > "$OUTPUT_FILE"
+                  echo "$fixed_value" | jq . > "dependency_data_${{ github.event.pull_request.head.sha }}__threshold_LICENSE_POLICY_SETTING_COMMENT.json"
                 else
                   echo "ERROR: Parsed value is not a valid JSON:"
                   cat result.json
@@ -159,4 +158,4 @@ jobs:
         uses: actions/upload-artifact@v2
         with:
           name: scan-results
-          path: $OUTPUT_FILE
+          path: dependency_data_${{ github.event.pull_request.head.sha }}__threshold_LICENSE_POLICY_SETTING_COMMENT.json
