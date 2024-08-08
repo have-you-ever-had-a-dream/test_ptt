@@ -68,24 +68,27 @@ jobs:
         id: api-call-start-task
         env:
           SEMGREP_APP_URL: ${{ secrets.SEMGREP_APP_URL }}
+          LICENSE_POLICY_THRESHOLD: "LICENSE_POLICY_SETTING_COMMENT"
           DEPLOYMENT_ID: 408
           REPOSITORY_ID: 7695
         run: |
           retry_count=0
           max_retries=5
           while [ $retry_count -lt $max_retries ]; do
-            response=$(curl --location --request POST '$SEMGREP_APP_URL/api/sca/deployments/$DEPLOYMENT_ID/dependencies/license_data_async' \
+            echo "Attempting to initiate task, try #$((retry_count+1))"
+            response=$(curl --location --request POST "$SEMGREP_APP_URL/api/sca/deployments/$DEPLOYMENT_ID/dependencies/license_data_async" \
               --header 'Accept:  application/octet-stream' \
               --header 'Content-Type:  application/json' \
-              --header 'Authorization: Bearer ${{ secrets.SEMGREP_APP_TOKEN }}' \
+              --header "Authorization: Bearer ${{ secrets.SEMGREP_APP_TOKEN }}" \
               --data '{
-                "repository_id": $REPOSITORY_ID,
+                "repository_id": '$REPOSITORY_ID',
                 "ref": "${{ github.ref }}",
                 "commit_sha": "${{ github.event.pull_request.head.sha }}",
                 "pr_identifier": "${{ github.event.pull_request.number }}",
-                "license_policy_threshold": $LICENSE_POLICY_THRESHOLD
+                "license_policy_threshold": "'$LICENSE_POLICY_THRESHOLD'"
               }' \
               --write-out "%{http_code}" --silent --output response.json)
+            echo "Response: $response"
             if [ "$response" -eq 202 ]; then
               echo "Task initiated successfully."
               task_token_jwt=$(jq -r '.task_token_jwt' response.json)
@@ -99,7 +102,7 @@ jobs:
             else
               echo "Failed to initiate task, status: $response"
               cat response.json
-              break
+              exit 1
             fi
           done
 
