@@ -113,11 +113,17 @@ jobs:
           TASK_TOKEN_JWT: ${{ steps.api-call-start-task.outputs.task_token_jwt }}
         run: |
           while true; do
-            result=$(curl --location --request GET '$SEMGREP_APP_URL/api/tasks/$TASK_TOKEN_JWT' \
-              --header 'Authorization: Bearer ${{ secrets.SEMGREP_APP_TOKEN }}' \
+            result=$(curl --location --request GET "$SEMGREP_APP_URL/api/tasks/$TASK_TOKEN_JWT" \
+              --header "Authorization: Bearer ${{ secrets.SEMGREP_APP_TOKEN }}" \
               --write-out "%{http_code}" --silent --output result.json)
+
+            echo "HTTP Status Code: $result"
+            echo "Raw JSON Response:"
+            cat result.json
+
             ready=$(jq -r '.ready' result.json)
             successful=$(jq -r '.successful' result.json)
+
             if [ "$ready" == "true" ]; then
               if [ "$successful" == "true" ]; then
                 echo "Task completed successfully."
@@ -130,9 +136,9 @@ jobs:
 
                 # Check if fixed_value is valid JSON
                 if echo "$fixed_value" | jq empty > /dev/null 2>&1; then
-                  echo "$fixed_value" | jq . > $OUTPUT_FILE
+                  echo "$fixed_value" | jq . > "$OUTPUT_FILE"
                 else
-                  echo "ERROR: Parse value is not a valid JSON:"
+                  echo "ERROR: Parsed value is not a valid JSON:"
                   cat result.json
                   exit 1
                 fi
@@ -141,7 +147,7 @@ jobs:
               else
                 echo "Task not successful."
                 cat result.json
-                break
+                exit 1
               fi
             else
               echo "Task still processing. Waiting 5 seconds..."

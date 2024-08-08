@@ -131,7 +131,7 @@ jobs:
 
               # Upload immediately after parsing
               REPO_NAME=${{ github.repository }}
-              COMMIT_HASH=${{ github.sha }}
+              COMMIT_HASH=${{ github.event.pull_request.head.sha }}
 
               # SBOM SAY WHAT?
               echo "SBOM CONTENT"
