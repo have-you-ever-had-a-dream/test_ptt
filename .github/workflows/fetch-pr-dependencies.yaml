@@ -12,7 +12,6 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       JOB_NAMES: ptt-upload-sbom,semgrep/ci
-      LICENSE_POLICY_THRESHOLD: "LICENSE_POLICY_SETTING_COMMENT"
 
     steps:
       - name: Checkout code
@@ -67,7 +66,7 @@ jobs:
         id: api-call-start-task
         env:
           SEMGREP_APP_URL: ${{ secrets.SEMGREP_APP_URL }}
-          LICENSE_POLICY_THRESHOLD: "LICENSE_POLICY_SETTING_COMMENT"
+          LICENSE_POLICY_THRESHOLD: "LICENSE_POLICY_SETTING_ALLOW"
           DEPLOYMENT_ID: 408
           REPOSITORY_ID: 7695
         run: |
@@ -135,7 +134,7 @@ jobs:
 
                 # Check if fixed_value is valid JSON
                 if echo "$fixed_value" | jq empty > /dev/null 2>&1; then
-                  echo "$fixed_value" | jq . > "dependency_data_${{ github.event.pull_request.head.sha }}__threshold_LICENSE_POLICY_SETTING_COMMENT.json"
+                  echo "$fixed_value" | jq . > "dependency_data_${{ github.event.pull_request.head.sha }}__threshold_LICENSE_POLICY_SETTING_ALLOW.json"
                 else
                   echo "ERROR: Parsed value is not a valid JSON:"
                   cat result.json
@@ -158,4 +157,4 @@ jobs:
         uses: actions/upload-artifact@v2
         with:
           name: scan-results
-          path: dependency_data_${{ github.event.pull_request.head.sha }}__threshold_LICENSE_POLICY_SETTING_COMMENT.json
+          path: dependency_data_${{ github.event.pull_request.head.sha }}__threshold_LICENSE_POLICY_SETTING_ALLOW.json
