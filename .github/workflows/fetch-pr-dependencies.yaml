@@ -67,8 +67,8 @@ jobs:
         env:
           SEMGREP_APP_URL: ${{ secrets.SEMGREP_APP_URL }}
           LICENSE_POLICY_THRESHOLD: "LICENSE_POLICY_SETTING_ALLOW"
-          DEPLOYMENT_ID: 408
-          REPOSITORY_ID: 7695
+          DEPLOYMENT_ID: 14972 # 408 for local testing with ngrok
+          REPOSITORY_ID: 661481 #7695 for local testing with ngrok 
         run: |
           retry_count=0
           max_retries=5
