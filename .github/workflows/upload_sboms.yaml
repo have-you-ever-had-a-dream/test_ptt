@@ -1,7 +1,6 @@
-name: Generate and Upload SBOMs
+name: [Pull Request] Generate and Upload SBOMs
 
 on:
-  workflow_dispatch:
   pull_request:
     branches:
       - main
