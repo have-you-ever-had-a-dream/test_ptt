@@ -1,5 +1,6 @@
 name: [Pull Request] Generate and Upload SBOMs
 
+
 on:
   pull_request:
     branches:
