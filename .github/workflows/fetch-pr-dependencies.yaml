@@ -6,53 +6,87 @@ on:
       - main
 
 jobs:
-  wait-for-semgrep-cloud-scan:
+  wait-for-semgrep-scan-jobs:
     runs-on: ubuntu-latest
+
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      LICENSE_POLICY_THRESHOLD: LICENSE_POLICY_SETTING_ALLOW
+      JOB_NAMES: ptt-upload-sbom-pr,semgrep/ci
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           ref: ${{ github.head_ref }}
 
-      - name: Wait for specific check to complete
+      - name: Set up jq
+        run: sudo apt-get install jq
+
+      - name: Wait for specific checks to complete
         run: |
+          IFS=',' read -r -a job_names <<< "$JOB_NAMES"
           completed=false
+
           while [ "$completed" != "true" ]; do
-            response=$(curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-              "https://api.github.com/repos/${{ github.repository }}/commits/${{ github.head_ref }}/check-runs")
-            echo "Response from GitHub API:"
-            echo "$response" | jq .
-            status=$(echo $response | jq -r '.check_runs[] | select(.name == "semgrep-cloud-platform/scan") | .status')
-            conclusion=$(echo $response | jq -r '.check_runs[] | select(.name == "semgrep-cloud-platform/scan") | .conclusion')
-            echo "Status of Semgrep scan: $status"
-            echo "Conclusion of Semgrep scan: $conclusion"
-            if [ "$status" == "completed" ]; then
-              completed=true
-              echo "Semgrep scan has completed with conclusion: $conclusion"
+            all_completed=true  # Start by assuming all jobs are completed
+
+            for job_name in "${job_names[@]}"; do
+              response=$(curl -H "Authorization: token $GITHUB_TOKEN" \
+                "https://api.github.com/repos/${{ github.repository }}/commits/${{ github.head_ref }}/check-runs")
+              
+              echo "Response from GitHub API for job $job_name:"
+              echo "$response" | jq .
+
+              status=$(echo $response | jq -r --arg job_name "$job_name" '.check_runs[] | select(.name == $job_name) | .status')
+              conclusion=$(echo $response | jq -r --arg job_name "$job_name" '.check_runs[] | select(.name == $job_name) | .conclusion')
+
+              echo "Status of $job_name: $status"
+              echo "Conclusion of $job_name: $conclusion"
+
+              if [ "$status" != "completed" ]; then
+                all_completed=false  # If any job is not completed, set to false
+                echo "Waiting for $job_name to complete..."
+              else
+                if [ "$conclusion" != "success" ]; then
+                  echo "$job_name did not succeed"
+                  exit 1  # Exit if any job fails
+                fi
+              fi
+            done
+
+            if [ "$all_completed" == "true" ]; then
+              completed=true  # If all jobs are completed, exit the loop
+              echo "All specified jobs have completed successfully."
             else
-              echo "Waiting for Semgrep scan to complete..."
-              sleep 30
+              sleep 30  # Wait before checking again
             fi
           done
 
       - name: Call API for task token and retry if needed
         id: api-call-start-task
+        env:
+          SEMGREP_APP_URL: ${{ secrets.SEMGREP_APP_URL }}
+          DEPLOYMENT_ID: 408
+          REPOSITORY_ID: 7695
         run: |
           retry_count=0
           max_retries=5
           while [ $retry_count -lt $max_retries ]; do
-            response=$(curl --location --request POST 'https://semgrep.dev/api/sca/deployments/14972/dependencies/license_data_async' \
+            echo "Attempting to initiate task, try #$((retry_count+1))"
+            response=$(curl --location --request POST "$SEMGREP_APP_URL/api/sca/deployments/$DEPLOYMENT_ID/dependencies/license_data_async" \
               --header 'Accept:  application/octet-stream' \
               --header 'Content-Type:  application/json' \
-              --header 'Authorization: Bearer ${{ secrets.SEMGREP_APP_TOKEN }}' \
+              --header "Authorization: Bearer ${{ secrets.SEMGREP_APP_TOKEN }}" \
               --data '{
-                "repository_id": 661481,
+                "repository_id": '$REPOSITORY_ID',
                 "ref": "${{ github.ref }}",
                 "commit_sha": "${{ github.event.pull_request.head.sha }}",
                 "pr_identifier": "${{ github.event.pull_request.number }}",
-                "license_policy_threshold": "LICENSE_POLICY_SETTING_COMMENT"
+                "license_policy_threshold": "'$LICENSE_POLICY_THRESHOLD'"
               }' \
               --write-out "%{http_code}" --silent --output response.json)
+            echo "Response: $response"
             if [ "$response" -eq 202 ]; then
               echo "Task initiated successfully."
               task_token_jwt=$(jq -r '.task_token_jwt' response.json)
@@ -66,36 +100,61 @@ jobs:
             else
               echo "Failed to initiate task, status: $response"
               cat response.json
-              break
+              exit 1
             fi
           done
 
       - name: Poll for task completion
         if: steps.api-call-start-task.outputs.task_token_jwt
+        env:
+          SEMGREP_APP_URL: ${{ secrets.SEMGREP_APP_URL }}
+          TASK_TOKEN_JWT: ${{ steps.api-call-start-task.outputs.task_token_jwt }}
         run: |
           while true; do
-            result=$(curl --location --request GET 'https://semgrep.dev/api/tasks/${{ steps.api-call-start-task.outputs.task_token_jwt }}' \
-              --header 'Authorization: Bearer ${{ secrets.SEMGREP_APP_TOKEN }}' \
+            result=$(curl --location --request GET "$SEMGREP_APP_URL/api/tasks/$TASK_TOKEN_JWT" \
+              --header "Authorization: Bearer ${{ secrets.SEMGREP_APP_TOKEN }}" \
               --write-out "%{http_code}" --silent --output result.json)
+
+            echo "HTTP Status Code: $result"
+            echo "Raw JSON Response:"
+            cat result.json
+
             ready=$(jq -r '.ready' result.json)
             successful=$(jq -r '.successful' result.json)
+
             if [ "$ready" == "true" ]; then
               if [ "$successful" == "true" ]; then
                 echo "Task completed successfully."
-                jq .value result.json > dependency_data_${{ github.event.pull_request.head.sha }}__threshold_LICENSE_POLICY_SETTING_COMMENT.json
+
+                # Extract and parse the 'value' field
+                value=$(jq -r '.value' result.json)
+
+                # Replace single quotes with double quotes and parse the JSON string
+                fixed_value=$(echo "$value" | sed "s/'/\"/g")
+
+                # Check if fixed_value is valid JSON
+                if echo "$fixed_value" | jq empty > /dev/null 2>&1; then
+                  echo "$fixed_value" | jq . > "dependency_data_${{ github.event.pull_request.head.sha }}__threshold_${{ env.LICENSE_POLICY_THRESHOLD }}.json"
+                else
+                  echo "ERROR: Parsed value is not a valid JSON:"
+                  cat result.json
+                  exit 1
+                fi
+
                 break
               else
                 echo "Task not successful."
                 cat result.json
-                break
+                exit 1
               fi
             else
               echo "Task still processing. Waiting 5 seconds..."
               sleep 5
             fi
           done
+
       - name: Upload Results
         uses: actions/upload-artifact@v2
         with:
           name: scan-results
-          path: dependency_data_${{ github.event.pull_request.head.sha }}__threshold_LICENSE_POLICY_SETTING_COMMENT.json
+          path: dependency_data_${{ github.event.pull_request.head.sha }}__threshold_${{ env.LICENSE_POLICY_THRESHOLD }}.json
